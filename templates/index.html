@@ -1,0 +1,209 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Language Translation Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌐 Language Translation Tool</h1>
+            <p>Translate text between multiple languages offline</p>
+        </header>
+
+        <div class="translation-area">
+            <div class="input-section">
+                <div class="language-selector">
+                    <label for="source-lang">From:</label>
+                    <select id="source-lang">
+                        {% for code, name in languages.items() %}
+                        <option value="{{ code }}" {% if code == 'auto' %}selected{% endif %}>{{ name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <textarea 
+                    id="input-text" 
+                    placeholder="Enter text to translate..."
+                    rows="6"
+                ></textarea>
+
+                <div class="input-controls">
+                    <button id="clear-btn" class="secondary-btn">Clear</button>
+                    <span class="char-count">0 characters</span>
+                </div>
+            </div>
+
+            <div class="translation-controls">
+                <button id="translate-btn" class="translate-btn">
+                    <span class="btn-text">Translate</span>
+                    <span class="loading-spinner" style="display: none;">⟳</span>
+                </button>
+                <button id="swap-langs" class="swap-btn" title="Swap languages">⇄</button>
+            </div>
+
+            <div class="output-section">
+                <div class="language-selector">
+                    <label for="target-lang">To:</label>
+                    <select id="target-lang">
+                        {% for code, name in languages.items() %}
+                        {% if code != 'auto' %}
+                        <option value="{{ code }}" {% if code == 'en' %}selected{% endif %}>{{ name }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div id="output-text" class="output-text">
+                    <div class="placeholder">Translation will appear here...</div>
+                </div>
+
+                <div class="output-controls">
+                    <button id="copy-btn" class="secondary-btn" disabled>Copy Result</button>
+                    <span id="copy-feedback" class="copy-feedback"></span>
+                </div>
+            </div>
+        </div>
+
+        <div id="error-message" class="error-message" style="display: none;"></div>
+
+        <footer>
+            <p>Powered by deep-translator | Works completely offline</p>
+            <p style="margin-top: 8px; font-size: 14px; opacity: 0.8;">Made with ❤️ by Karan</p>
+        </footer>
+    </div>
+
+    <script>
+        const inputText = document.getElementById('input-text');
+        const outputText = document.getElementById('output-text');
+        const sourceLang = document.getElementById('source-lang');
+        const targetLang = document.getElementById('target-lang');
+        const translateBtn = document.getElementById('translate-btn');
+        const copyBtn = document.getElementById('copy-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const swapBtn = document.getElementById('swap-langs');
+        const errorMessage = document.getElementById('error-message');
+        const charCount = document.querySelector('.char-count');
+        const copyFeedback = document.getElementById('copy-feedback');
+        const loadingSpinner = document.querySelector('.loading-spinner');
+        const btnText = document.querySelector('.btn-text');
+
+        // Character counter
+        inputText.addEventListener('input', function() {
+            const count = this.value.length;
+            charCount.textContent = `${count} characters`;
+        });
+
+        // Clear button
+        clearBtn.addEventListener('click', function() {
+            inputText.value = '';
+            outputText.innerHTML = '<div class="placeholder">Translation will appear here...</div>';
+            copyBtn.disabled = true;
+            charCount.textContent = '0 characters';
+            hideError();
+        });
+
+        // Swap languages
+        swapBtn.addEventListener('click', function() {
+            if (sourceLang.value !== 'auto') {
+                const temp = sourceLang.value;
+                sourceLang.value = targetLang.value;
+                targetLang.value = temp;
+            }
+        });
+
+        // Translate button
+        translateBtn.addEventListener('click', translate);
+
+        // Enter key to translate
+        inputText.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                translate();
+            }
+        });
+
+        function translate() {
+            const text = inputText.value.trim();
+            
+            if (!text) {
+                showError('Please enter text to translate');
+                return;
+            }
+
+            // Show loading state
+            translateBtn.disabled = true;
+            loadingSpinner.style.display = 'inline';
+            btnText.textContent = 'Translating...';
+            hideError();
+
+            fetch('/translate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: text,
+                    source_lang: sourceLang.value,
+                    target_lang: targetLang.value
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                    outputText.innerHTML = '<div class="placeholder">Translation will appear here...</div>';
+                    copyBtn.disabled = true;
+                } else {
+                    outputText.innerHTML = `<div class="translated-text">${data.translated_text}</div>`;
+                    copyBtn.disabled = false;
+                    hideError();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showError('Network error. Please try again.');
+                outputText.innerHTML = '<div class="placeholder">Translation will appear here...</div>';
+                copyBtn.disabled = true;
+            })
+            .finally(() => {
+                // Hide loading state
+                translateBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+                btnText.textContent = 'Translate';
+            });
+        }
+
+        // Copy to clipboard
+        copyBtn.addEventListener('click', function() {
+            const translatedText = outputText.querySelector('.translated-text');
+            if (translatedText) {
+                navigator.clipboard.writeText(translatedText.textContent).then(function() {
+                    copyFeedback.textContent = 'Copied!';
+                    copyFeedback.style.color = '#4CAF50';
+                    setTimeout(() => {
+                        copyFeedback.textContent = '';
+                    }, 2000);
+                }).catch(function() {
+                    copyFeedback.textContent = 'Copy failed';
+                    copyFeedback.style.color = '#f44336';
+                    setTimeout(() => {
+                        copyFeedback.textContent = '';
+                    }, 2000);
+                });
+            }
+        });
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+        }
+
+        function hideError() {
+            errorMessage.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
